@@ -1,0 +1,32 @@
+# Downloaded engine binaries / tool installs (install.sh fetches these on demand)
+.mcp-tools/
+ghidra/
+ghidra_*_PUBLIC/
+
+# Signing material
+.keystore/
+
+# Machine-specific config written by install.sh
+.mcp.json
+opencode.json
+
+# Per-target analysis outputs & working memory (user data — never committed)
+*_analysis/
+**/notes.md
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+**/.venv/
+
+# Knowledge-graph output
+graphify-out/
+
+# Editor / OS / backups
+.DS_Store
+*.bak
+*.tmp
+
+# Per-target analysis workspaces (user data)
+targets/
