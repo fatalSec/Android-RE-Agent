@@ -29,9 +29,9 @@ Lifecycle:
 ```bash
 ./update.sh                    # refresh toolkit, re-register engines, health-check
 ./uninstall.sh                 # menu: unregister engines (keep the home) or complete wipe
-./uninstall.sh --purge --kb    # delete the toolkit home and unregister the KB
+./uninstall.sh --purge --kb    # wipe the toolkit home and unregister the KB (non-interactive)
 ```
-Uninstall never touches your Ghidra install, APKs, target workspaces/notes, or the KB vault.
+Uninstall also **offers to handle the optional llm-re-wiki KB** — leave it, just unregister it, or run the KB's own uninstaller at its install location (that uninstaller backs up your notes first). It never touches your Ghidra install, APKs, or target workspaces/notes, and it only removes the KB if you explicitly choose to.
 
 ## Preflight
 What the agent checks before analysis — also runnable any time:
