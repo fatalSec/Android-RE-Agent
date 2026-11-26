@@ -1,6 +1,6 @@
 # Native RASP Playbook (`.so`)
 
-Loaded on demand from `native-analysis`. Assumes the SKILL.md triage, the Ghidra-bridge prerequisite, and KB-grounding rules.
+Loaded on demand from `native-analysis`. Assumes the SKILL.md triage, the Ghidra-bridge prerequisite, and KB-grounding rules. The `llm-re-wiki` KB is **optional** — when its `kb_*` tools aren't registered, skip every KB step here and rely on direct analysis. Write any files only into the target workspace beside the APK (`<apk-dir>/<apk-name>_analysis/`, see `AGENTS.md`), never into the agent home.
 
 **Scope:** native (`.so`)-layer RASP. Java/Smali-layer RASP (manifest flags, `RootBeer`, Java signature checks, Play Integrity/SafetyNet) lives in the **`java-analysis`** skill's `references/rasp.md`; check both layers — hardened apps split checks across them, and native checks are the ones that survive Java-layer patching.
 

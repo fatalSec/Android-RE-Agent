@@ -5,7 +5,8 @@ Engines: jadx-headless (1013503897/jadx-headless-mcp) and the ghidra-mcp bridge
 (bethington/ghidra-mcp); llm-re-wiki is delegated to its own registrar.
 
 Normally driven by the repo's install.sh / uninstall.sh. `doctor` is the preflight the
-agent runs before analysis; `set-ghidra` records the user's Ghidra path (never downloads).
+agent runs before analysis; `set-ghidra` records an existing Ghidra path; `download-ghidra`
+fetches the latest official release (used by install.sh only when the user chooses it).
 """
 
 from __future__ import annotations
@@ -407,6 +408,15 @@ def wiki(sub_action: str, agent: str = "claude") -> None:
     multi-agent). We do NOT duplicate it here; we shell its register.py with its own venv.
     """
     python, register = _wiki_paths()
+    if sub_action == "test":
+        # Start-up self-test: can the registered KB server actually run? (venv on 3.10+ with `mcp`)
+        venv_py = WIKI_ROOT / ".kb" / "scripts" / ".venv" / "bin" / "python"
+        health = _wiki_venv_health(venv_py)
+        if not health["mcp_importable"]:
+            log(f"[!] {health['note']}")
+            sys.exit(1)
+        server = WIKI_ROOT / ".kb" / "mcp" / "server.py"
+        sys.exit(0 if test_mcp_stdio("llm-re-wiki", cmd=[str(venv_py), str(server)]) else 1)
     if sub_action == "status":
         proc = subprocess.run([str(python), str(register), "status", "--agent", agent], capture_output=True, text=True)
         print(json.dumps({"server": "llm-re-wiki", "agent": agent, "registered": proc.returncode == 0}, indent=2))
@@ -508,7 +518,7 @@ def check_status(server_name: str) -> None:
     print(json.dumps({"server": server_name, "installed": installed}, indent=2))
 
 
-def test_mcp_stdio(server_name: str, timeout: float = 45.0) -> bool:
+def test_mcp_stdio(server_name: str, timeout: float = 45.0, cmd: list[str] | None = None) -> bool:
     """Verify an MCP server over stdio (initialize + tools/list).
 
     Reads the server's stdout until the tools/list response arrives, then terminates it.
@@ -521,8 +531,11 @@ def test_mcp_stdio(server_name: str, timeout: float = 45.0) -> bool:
     import threading
     import time
 
+    # An explicit command (e.g. the KB server, registered by its own registrar) skips config lookup.
+    entry = {"command": cmd[0], "args": cmd[1:]} if cmd else None
     claude_cfg = load_json(CLAUDE_MCP_JSON, {"mcpServers": {}})
-    entry = claude_cfg.get("mcpServers", {}).get(server_name)
+    if not entry:
+        entry = claude_cfg.get("mcpServers", {}).get(server_name)
     if not entry:
         for oc in (OPENCODE_JSON, OPENCODE_GLOBAL_JSON):  # project, then global (flat or mcp.servers)
             if oc.exists():
@@ -721,12 +734,35 @@ def ghidra_plugin_status(ghidra_dir: str | None) -> dict:
     }
 
 
+def _wiki_venv_health(venv_py: Path) -> dict:
+    """Python version of the KB venv and whether it can import `mcp` (needs 3.10+).
+    A registered server whose venv fails this check will show as 'failed' in the agent."""
+    if not venv_py.exists():
+        return {"venv_python": None, "python_version": None, "mcp_importable": False,
+                "note": "KB venv missing — re-run install.sh (it rebuilds the KB venv on Python 3.10+)."}
+    try:
+        p = subprocess.run([str(venv_py), "-c",
+                            "import sys\nv='%d.%d.%d' % sys.version_info[:3]\n"
+                            "try:\n import mcp; ok=True\nexcept Exception:\n ok=False\nprint(v, ok)"],
+                           capture_output=True, text=True, timeout=30)
+        ver, ok = (p.stdout.strip().split() + ["?", "False"])[:2]
+    except Exception:
+        ver, ok = "?", "False"
+    importable = ok == "True"
+    note = None
+    if not importable:
+        note = (f"KB venv is Python {ver} and cannot import `mcp` (needs 3.10+), so the KB server "
+                "cannot start. Re-run install.sh — it rebuilds the KB venv on Python 3.10+.")
+    return {"venv_python": str(venv_py), "python_version": ver, "mcp_importable": importable, "note": note}
+
+
 def _wiki_status_report() -> dict:
     register = WIKI_ROOT / ".kb" / "mcp" / "register.py"
     venv_py = WIKI_ROOT / ".kb" / "scripts" / ".venv" / "bin" / "python"
     installed = register.is_file()
     res = {"installed": installed, "root": str(WIKI_ROOT), "claude": False, "opencode": False}
     if installed:
+        res.update(_wiki_venv_health(venv_py))
         py = str(venv_py) if venv_py.exists() else sys.executable
         for agent in ("claude", "opencode"):
             try:
@@ -820,7 +856,8 @@ def main() -> None:
 
     # wiki (delegates to llm-re-wiki's own registrar — user/global scope)
     p_wiki = sub.add_parser("wiki", help="Manage the user-scoped llm-re-wiki KB via its own registrar")
-    p_wiki.add_argument("sub", choices=["detect", "status", "add", "remove"], help="Registrar action")
+    p_wiki.add_argument("sub", choices=["detect", "status", "add", "remove", "test"],
+                        help="Registrar action; 'test' = start-up self-test of the KB server")
     p_wiki.add_argument("--agent", default="claude", help="Target agent: claude | opencode | cursor | all (default: claude)")
 
     # doctor (preflight status, JSON)

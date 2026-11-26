@@ -1,6 +1,6 @@
 # Quick-Wins Playbook (low-hanging fruit)
 
-Loaded on demand from `java-analysis`. Assumes the SKILL.md tool table and triage sequence. These are the cheap, high-value checks to run **before** deep RASP/obfuscation work — they're usually the fastest findings in an assessment. Record every hit in the target's case notes (`notes.md`).
+Loaded on demand from `java-analysis`. Assumes the SKILL.md tool table and triage sequence. These are the cheap, high-value checks to run **before** deep RASP/obfuscation work — they're usually the fastest findings in an assessment. Record every hit in the target's case notes (`notes.md`). The `llm-re-wiki` KB is **optional** — when its `kb_*` tools aren't registered, skip every KB step here and rely on direct analysis. Write any files only into the target workspace beside the APK (`<apk-dir>/<apk-name>_analysis/`, see `AGENTS.md`), never into the agent home.
 
 Two caveats: `code`-scope searches (`search_classes_by_keyword search_in="code"`) must pass a `package` filter on large APKs; and treat matches as **leads, not confirmed vulns** — read the surrounding method and keep provenance (`[I]`/`[U]`) until verified.
 

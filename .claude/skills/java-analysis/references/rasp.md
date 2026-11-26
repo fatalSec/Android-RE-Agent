@@ -1,6 +1,6 @@
 # RASP Detection Playbook (Anti-Debug / Root / Emulation / Hook / Tamper / Attestation)
 
-Loaded on demand from `java-analysis`. Assumes the SKILL.md tool table, triage sequence, and KB-grounding rules. `code`-scope searches should pass a `package` filter on large APKs; use `get_strings` only for `res/values/strings*.xml`.
+Loaded on demand from `java-analysis`. Assumes the SKILL.md tool table, triage sequence, and KB-grounding rules. `code`-scope searches should pass a `package` filter on large APKs; use `get_strings` only for `res/values/strings*.xml`. The `llm-re-wiki` KB is **optional** — when its `kb_*` tools aren't registered, skip every KB step here and rely on direct analysis. Write any files only into the target workspace beside the APK (`<apk-dir>/<apk-name>_analysis/`, see `AGENTS.md`), never into the agent home.
 
 **Scope:** Java/Smali-layer RASP. Native (`.so`) RASP — inline `ptrace`/SVC anti-debug, native `/proc/*/maps` scanning, JNI/native-method integrity — lives in the `native-analysis` skill; pivot there whenever a check is offloaded to a loaded library.
 

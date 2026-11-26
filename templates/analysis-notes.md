@@ -1,6 +1,7 @@
 <!--
 Per-target case notes (the agent's durable working memory). See AGENTS.md → Working memory.
-Copy this file to the target APK's working/output dir as `notes.md`, then APPEND as you confirm
+Copy this file to the target workspace beside the APK (<apk-dir>/<apk-name>_analysis/notes.md — never
+into the agent home), then APPEND as you confirm
 facts and RE-READ before reasoning/answering. Keep offsets/opcodes/FQNs VERBATIM.
 Provenance markers: [V: src] secondary · [I] inferred · [U] unverified · [VS: ver] version-specific
 · [X: …] contradicted · [AI Synthesis] model knowledge. Never write release keystore passwords here.

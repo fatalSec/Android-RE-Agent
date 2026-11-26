@@ -1,6 +1,6 @@
 # Native Quick-Wins Playbook (`.so` low-hanging fruit)
 
-Loaded on demand from `native-analysis`. Assumes the SKILL.md triage + Ghidra-bridge prerequisite. These are the cheap, high-value findings to grab **before** the deep anti-analysis/RASP work — mostly `strings`/`nm`/`readelf`/`checksec` on the extracted `.so` plus a few Ghidra xref lookups. Record every hit in the case notes (`notes.md`); treat matches as leads to confirm, keep `[U]` until verified.
+Loaded on demand from `native-analysis`. Assumes the SKILL.md triage + Ghidra-bridge prerequisite. These are the cheap, high-value findings to grab **before** the deep anti-analysis/RASP work — mostly `strings`/`nm`/`readelf`/`checksec` on the extracted `.so` plus a few Ghidra xref lookups. Record every hit in the case notes (`notes.md`); treat matches as leads to confirm, keep `[U]` until verified. The `llm-re-wiki` KB is **optional** — when its `kb_*` tools aren't registered, skip every KB step here and rely on direct analysis. Write any files only into the target workspace beside the APK (`<apk-dir>/<apk-name>_analysis/`, see `AGENTS.md`), never into the agent home.
 
 > If an obfuscated lib returns almost nothing here, that's the **string-encryption pivot** (`references/anti-analysis.md` §1), not "clean".
 

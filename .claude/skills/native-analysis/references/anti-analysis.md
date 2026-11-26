@@ -1,6 +1,6 @@
 # Native Anti-Analysis & Obfuscation Playbook (`.so`)
 
-Loaded on demand from `native-analysis`. Assumes the SKILL.md triage, the Ghidra-bridge prerequisite, and KB-grounding rules. Ghidra (`ghidra-mcp`) gives disassembly / decompilation / xrefs; the **resolution** steps below need tools Ghidra does not provide.
+Loaded on demand from `native-analysis`. Assumes the SKILL.md triage, the Ghidra-bridge prerequisite, and KB-grounding rules. Ghidra (`ghidra-mcp`) gives disassembly / decompilation / xrefs; the **resolution** steps below need tools Ghidra does not provide. The `llm-re-wiki` KB is **optional** — when its `kb_*` tools aren't registered, skip every KB step here and rely on direct analysis. Write any files only into the target workspace beside the APK (`<apk-dir>/<apk-name>_analysis/`, see `AGENTS.md`), never into the agent home.
 
 **External tooling (not `ghidra-mcp`) — install with consent.** Emulation and MBA/SMT solving run via Bash on bytes/addresses/registers you extract from Ghidra:
 - **Unicorn Engine** (`pip install unicorn`) — concrete CPU emulation of a block/function (opaque predicates, CFF, indirect branches, string decryptors).

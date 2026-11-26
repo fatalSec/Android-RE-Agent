@@ -162,27 +162,38 @@ ensure_kb_mcp() {  # root
     [ -d "$root/.kb/mcp" ] || return 0
     if [ -x "$venv/bin/python" ] && "$venv/bin/python" -c 'import mcp' >/dev/null 2>&1; then ok "KB MCP dependency present."; return; fi
     local py; py="$(find_py310)"
-    [ -n "$py" ] || { warn "KB MCP server needs Python 3.10+ (none found; e.g. brew install python@3.12) — register works, server won't start until fixed."; return; }
+    [ -n "$py" ] || { warn "KB MCP server needs Python 3.10+ (none found; e.g. brew install python@3.12)."; return 1; }
     warn "KB venv missing 'mcp' or built on <3.10 — rebuilding with $py"
     rm -rf "$venv"; "$py" -m venv "$venv" && "$venv/bin/pip" install -q -U pip >/dev/null 2>&1
     if "$venv/bin/pip" install -q -r "$root/.kb/scripts/requirements.txt" -r "$root/.kb/mcp/requirements-mcp.txt" >/dev/null 2>&1; then
         ok "KB MCP dependency installed (mcp on $("$venv/bin/python" -V 2>&1))."
-    else warn "KB dependency install failed — see $root/.kb/mcp/requirements-mcp.txt"; fi
+    else warn "KB dependency install failed — see $root/.kb/mcp/requirements-mcp.txt"; return 1; fi
+}
+kb_register() {  # root — register only a server that can actually start, then self-test it
+    local root="$1"
+    if ! ensure_kb_mcp "$root"; then
+        warn "KB not registered: its server could not start (needs Python 3.10+ with 'mcp'). Fix that, then re-run: $TARGET_DIR/install.sh --kb-path $root"
+        return 0
+    fi
+    if LLM_RE_WIKI_ROOT="$root" "$PY" "$MGR" wiki add --agent all; then ok "KB registered ($root)"
+    else warn "KB register failed."; return 0; fi
+    if LLM_RE_WIKI_ROOT="$root" "$PY" "$MGR" wiki test >/dev/null 2>&1; then ok "KB server start-up test passed."
+    else warn "KB server start-up test failed — run: $PY $MGR wiki test   (for details)"; fi
 }
 kb_fresh() {
     command -v curl >/dev/null 2>&1 || { warn "curl not found; install the KB manually, then: $TARGET_DIR/install.sh --kb-path <dir>"; return; }
     curl -fsSL https://raw.githubusercontent.com/fatalSec/LLM-RE-WIKI/main/install.sh | bash || { warn "KB install failed."; return; }
-    ensure_kb_mcp "$HOME/.llm-re-wiki"; "$PY" "$MGR" wiki add --agent all && ok "KB registered" || warn "KB register failed."
+    kb_register "$HOME/.llm-re-wiki"
 }
 if [ -n "$KB_PATH" ]; then
     KB_PATH="$("$PY" -c "import os,sys;print(os.path.abspath(os.path.expanduser(sys.argv[1])))" "$KB_PATH")"
-    ensure_kb_mcp "$KB_PATH"; LLM_RE_WIKI_ROOT="$KB_PATH" "$PY" "$MGR" wiki add --agent all && ok "KB registered ($KB_PATH)" || warn "KB register failed."
+    kb_register "$KB_PATH"
 elif [ "$ARG_YES" -eq 1 ]; then
     info "KB: skipped (non-interactive). Add later: $TARGET_DIR/install.sh --kb-path <dir>"
 elif [ -d "$HOME/.llm-re-wiki/.kb" ]; then
     case "$(prompt_user "Register the existing llm-re-wiki KB (~/.llm-re-wiki)? [Y/n]: " "Y")" in
         n|N|no|NO) info "KB: left unregistered." ;;
-        *) ensure_kb_mcp "$HOME/.llm-re-wiki"; "$PY" "$MGR" wiki add --agent all && ok "KB registered" || warn "KB register failed." ;;
+        *) kb_register "$HOME/.llm-re-wiki" ;;
     esac
 else
     case "$(prompt_user "Install the llm-re-wiki knowledge base now (recommended)? [y/N]: " "N")" in

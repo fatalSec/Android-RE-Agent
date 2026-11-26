@@ -1,6 +1,6 @@
 # Anti-Analysis & Obfuscation Playbook
 
-Loaded on demand from `java-analysis`. Assumes the SKILL.md tool table, triage sequence, and KB-grounding rules. Tools named here (`search_classes_by_keyword`, `get_method_body`, `get_xrefs_to_method`, `get_smali_of_class`, …) are defined there. All `code`-scope searches should pass a `package` filter on large APKs.
+Loaded on demand from `java-analysis`. Assumes the SKILL.md tool table, triage sequence, and KB-grounding rules. Tools named here (`search_classes_by_keyword`, `get_method_body`, `get_xrefs_to_method`, `get_smali_of_class`, …) are defined there. All `code`-scope searches should pass a `package` filter on large APKs. The `llm-re-wiki` KB is **optional** — when its `kb_*` tools aren't registered, skip every KB step here and rely on direct analysis. Write any files only into the target workspace beside the APK (`<apk-dir>/<apk-name>_analysis/`, see `AGENTS.md`), never into the agent home.
 
 **Order of attack:** identify the obfuscator/packer first (it tells you what to expect). Fingerprint with **APKiD** (below), corroborate with `get_app_info` + `list_classes` for the package shape, then `kb_search` the vendor/product it reports (`kb_search("DexGuard", topic="protectors")`, `kb_search("Jiagu", topic="protectors")`, `kb_search("Obfuscator-LLVM")`) and read the `wiki/protectors/` profile. A named protector's profile lists its exact string-encryption scheme, CFF shape, and known decryptor signatures — far cheaper than rediscovering them.
 

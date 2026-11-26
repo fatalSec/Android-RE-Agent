@@ -14,6 +14,8 @@ description: Unpack APKs to smali/resources with apktool, and rebuild, page-alig
 
 ## Agent Commands
 
+**Paths:** `<ws>` below is the target workspace beside the APK — `<apk-dir>/<apk-name>_analysis` (see `AGENTS.md` → Target workspace). Always use **absolute** paths; never write decoded output or rebuilt APKs into the agent home (your working directory) or the repo.
+
 ### 1. Check Toolchain Availability
 ```bash
 python3 .claude/skills/apk-repack/apk_tools.py check
@@ -23,7 +25,7 @@ Reports paths for `java`, `keytool`, `apktool`, `zipalign`, and `apksigner`.
 ### 2. Unpack / Decompile an APK
 Unpacking is a single, safe command — run `apktool` directly (not through the script):
 ```bash
-apktool d <path-to-apk> -o <output-dir> -f
+apktool d </abs/path/app.apk> -o <ws>/apktool -f
 ```
 Extracts `AndroidManifest.xml`, resources, assets, and disassembled smali for analysis or patching. (For Java decompilation use the `jadx-headless` MCP via the `java-analysis` skill instead.)
 
@@ -32,12 +34,12 @@ This is the **only** supported way to resign — deterministic order, no hand-ru
 
 **Debug** (agent may run it):
 ```bash
-python3 .claude/skills/apk-repack/apk_tools.py repack <decompiled-dir> -o <output-signed.apk>
+python3 .claude/skills/apk-repack/apk_tools.py repack <ws>/apktool -o <ws>/out/<apk-name>-signed.apk
 ```
 
 **Release** (agent runs it) — the user supplies the keystore path, alias, and a password **file** path (see Rule 3). The agent never handles the password value:
 ```bash
-python3 .claude/skills/apk-repack/apk_tools.py repack <decompiled-dir> -o <output-signed.apk> \
+python3 .claude/skills/apk-repack/apk_tools.py repack <ws>/apktool -o <ws>/out/<apk-name>-signed.apk \
   --keystore </path/to/release.keystore> --alias <release-alias> --ks-pass-file </path/to/key.pw>
 ```
 `apksigner` reads the password from the file (`file:` spec) — it is never on the command line. If release `repack` is run with neither `--ks-pass-file` nor a terminal, the script refuses and prints the `printf … > key.pw` one-liner. `--ks-pass`/`--key-pass` (raw values) exist for unattended CI only — do not use them to carry a user's release password through chat.
