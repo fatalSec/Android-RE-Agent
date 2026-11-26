@@ -41,7 +41,7 @@ python3 .claude/skills/mcp-lifecycle/manage_mcp.py doctor
 It reports the toolchain, the engines' registration, whether Ghidra has its platform decompiler and the ghidra-mcp **plugin** in `Extensions/`, and the KB's Python version / whether its server can start. If an engine the task needs is missing, the agent stops and tells you the fix (restart, or re-run `install.sh`) instead of starting a partial analysis. Whether an MCP is *attached* to a live session is visible only inside the agent.
 
 ## Architecture
-- **[AGENTS.md](AGENTS.md)** — operating rules and skill routing; single source of truth (`CLAUDE.md` imports it; OpenCode loads it). The OpenCode agent definition is [`.opencode/agents/android-re-agent.md`](.opencode/agents/android-re-agent.md).
+- **[AGENTS.md](AGENTS.md)** — operating rules and skill routing; the single source of truth. OpenCode loads it automatically when started inside the agent home, and `CLAUDE.md` imports it for Claude Code — no separate agent-definition files.
 - **MCP servers** (all user-scoped):
   - `jadx-headless` — Java/Dalvik decompilation & smali (JAR under `~/.android-re-agent/.mcp-tools/`).
   - `ghidra-mcp` — native `.so` analysis via a Python bridge to a **running** Ghidra with the ghidra-mcp plugin.

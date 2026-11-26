@@ -116,7 +116,7 @@ if [ "$TARGET_DIR" = "$SRC" ]; then
     ok "Using the current checkout in place."
 elif [ "$IS_CHECKOUT" -eq 1 ]; then
     mkdir -p "$TARGET_DIR"
-    for item in .claude templates AGENTS.md CLAUDE.md README.md install.sh update.sh uninstall.sh .opencode .git; do
+    for item in .claude templates AGENTS.md CLAUDE.md README.md install.sh update.sh uninstall.sh .git; do
         [ -e "$SRC/$item" ] && cp -R "$SRC/$item" "$TARGET_DIR/" 2>/dev/null || true
     done
     ok "Copied toolkit from $SRC"
