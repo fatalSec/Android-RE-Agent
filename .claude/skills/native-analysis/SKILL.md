@@ -23,6 +23,8 @@ The KB is an **optional, read-only** add-on. If its `kb_*` tools aren't in your 
 
 ## Analysis Workflows
 
+> **Before touching the target**, resolve the opening decision points per the Decision policy (`AGENTS.md`): **`→ prior_workspace_exists`** (reuse / fresh / compare) and **`→ analysis_scope`** (full / targeted). Importing a large `.so` is **`→ expensive_step`** (announce it).
+
 ### 1. Get the target libraries (reuse before extracting)
 Ghidra needs the `.so` as a file on disk. **Don't extract twice:**
 - If `apk-repack`'s `apktool d` has already decoded this APK for a patch task, the libraries are already at `<ws>/apktool/lib/<abi>/*.so` (byte-identical to the APK) — use those.
@@ -36,7 +38,7 @@ unzip -q -j </abs/path/app.apk> "lib/arm64-v8a/*.so" -d <ws>/lib/arm64-v8a/   # 
 If you create a Ghidra project for the target, put it in `<ws>/ghidra/`.
 
 ### 2. Triage (do this first — cheap CLI recon, before Ghidra)
-Fast static recon with standard binutils/LLVM CLI tools (run on the extracted `.so`; if a tool is missing, it's an uninstalled dependency — ask before installing, Rule 1):
+Fast static recon with standard binutils/LLVM CLI tools (run on the extracted `.so`; a missing tool is **`→ Decision point: optional_tool_install`** — install / path / skip per the Decision policy):
 - **Hardening posture (low-hanging fruit):** `checksec --file=<so>` (or `readelf -hld`) — NX, PIE, RELRO, stack canary; `readelf -dW` for `SONAME`/`NEEDED`/`RUNPATH`.
 - **Exports → which binding:** `nm -D --defined-only <so>` / `readelf --dyn-syms`. `Java_<pkg>_<class>_<m>` exports ⇒ **static JNI** (§4). None, but `JNI_OnLoad` present ⇒ **dynamic `RegisterNatives`** (§5). Plain C exports matching Java method names ⇒ **JNA** (§6).
 - **Imports → RASP hints:** imports of `ptrace`, `fork`, `prctl`, `dl_iterate_phdr`, `__system_property_get`, `pthread_create`, `dlopen` hint at anti-debug / integrity / watchdogs.
@@ -47,11 +49,11 @@ Fast static recon with standard binutils/LLVM CLI tools (run on the extracted `.
 
 ### 3. Load into Ghidra via the `ghidra-mcp` bridge (use the MCP tools — don't hand-roll)
 `ghidra-mcp` (`bethington/ghidra-mcp`) is an HTTP bridge to Ghidra, driven through its **MCP tools** — use them; do **not** shell `analyzeHeadless` or write a custom headless script (that path is fragile and off-book — see the circuit-breaker below). Typical flow:
-1. **Preflight the bridge** (per `mcp-lifecycle` Workflow 1): the `ghidra-mcp` tools must be in your registry. If not → `doctor`; *installed-but-not-attached → the user restarts the agent*, *not installed → the user runs `./install.sh` (it asks for an existing Ghidra path or downloads it)*. Never install/launch it mid-analysis.
+1. **Preflight the bridge** (per `mcp-lifecycle` Workflow 1): the `ghidra-mcp` tools must be in your registry. If not → `doctor`; *installed-but-not-attached → the user restarts the agent*, *not installed → the user runs `./install.sh` (Homebrew on macOS, an existing Ghidra path, or download)*. Never install/launch it mid-analysis. The bridge also needs a **running** Ghidra with the **GhidraMCP plugin** enabled — `doctor` reports whether the plugin is installed.
 2. **Connect & import** with the bridge's own tools — `list_instances` / `connect_instance` to reach a running Ghidra, then `import_file` to load the `.so` (tools may be grouped: `list_tool_groups` / `load_tool_group` first). `check_tools` confirms what's available.
-3. **Decompiler precheck.** `doctor` reports `ghidra.decompiler_present` for this platform. If it's `false`, Ghidra **cannot decompile here** (the native `os/<platform>/decompile` is missing) — stop and tell the user to fix that install or re-run `./install.sh` and choose **download** (the official build includes this platform's decompiler); don't fall back to a hand-built headless harness.
+3. **Decompiler precheck.** `doctor` reports `ghidra.decompiler_present` for this platform. If it's `false`, Ghidra **cannot decompile here** (the native `os/<platform>/decompile` is missing) — stop and tell the user the fix: build the natives (`python3 .claude/skills/mcp-lifecycle/manage_mcp.py build-ghidra-natives`, needs JDK 21+ and a C++ compiler) or, on macOS, `brew install ghidra` (it builds the decompiler); re-running `./install.sh` offers both. The official download zip has **no macOS decompiler**, so downloading again won't help on a Mac. Don't fall back to a hand-built headless harness.
 
-**Never download or install Ghidra yourself mid-session** — Ghidra is provisioned only by `install.sh` (existing path or download, the user's choice); the bridge just connects to that instance.
+**Never download, install, or build Ghidra yourself mid-session** — Ghidra is provisioned only by `install.sh` (Homebrew on macOS, an existing path, or download — the user's choice); the bridge just connects to that instance.
 
 **Circuit-breaker (per AGENTS.md Rule 8):** if the bridge isn't attached or the decompiler is missing, make one bounded check, then **report the blocker + fix** (run `install.sh`, restart, or repair Ghidra). Do not improvise `analyzeHeadless` runs, custom Ghidra scripts, or JDK/version juggling to route around missing setup.
 

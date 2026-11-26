@@ -4,7 +4,7 @@ Loaded on demand from `java-analysis`. Assumes the SKILL.md tool table, triage s
 
 **Scope:** Java/Smali-layer RASP. Native (`.so`) RASP — inline `ptrace`/SVC anti-debug, native `/proc/*/maps` scanning, JNI/native-method integrity — lives in the `native-analysis` skill; pivot there whenever a check is offloaded to a loaded library.
 
-**For authorized testing only** (see `AGENTS.md`). Report *where* each check lives and *how* it works; neutralizing-for-testing guidance stays factual (which method to stub/return, which smali branch to patch), not a distribution-ready cracking recipe.
+**Authorized testing only** (`authorization_unclear` is a locked decision — confirm per the Decision policy if in doubt). This skill *locates and explains* checks; actually **neutralizing** one (patch/NOP) is **`→ Decision point: modify_target`** (locked). Reporting stays factual (which method to stub/return, which smali branch to patch), not a distribution-ready cracking recipe.
 
 **Two-pass method**
 1. **Plain-text pass** — code-search the literals below. Hits give you the class/method directly.

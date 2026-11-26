@@ -7,7 +7,7 @@ description: Preflight (doctor), status, self-tests, and the low-level install/r
 
 ## Provisioning model (install / doctor / uninstall)
 Installs happen **once, out of the analysis session**, because a newly-registered MCP only attaches to a *new* agent session:
-- **`./install.sh`** (in the agent home, `~/.android-re-agent`) — the user runs it in a terminal; it registers the engines at **user scope**, asks for Ghidra (an **existing path** or **download** the official release — the user's choice), and **offers** the optional KB. Then the user restarts the agent. Heavy prerequisites (JDK, Android SDK) are checked-and-instructed, never auto-installed.
+- **`./install.sh`** (in the agent home, `~/.android-re-agent`) — the user runs it in a terminal; it registers the engines at **user scope**, asks for Ghidra (**`brew install ghidra`** on macOS — recommended, it builds the decompiler — an **existing path**, or **download** the official zip), checks it has this platform's decompiler (offering a native build / Homebrew / continue if not), and **offers** the optional KB. Then the user restarts the agent. Heavy prerequisites (JDK, Android SDK) are checked-and-instructed, never auto-installed.
 - **`manage_mcp.py doctor`** — the agent's **preflight**: a JSON snapshot of on-disk/config state, including the Ghidra decompiler + plugin and the KB's Python version / `mcp` importability (it can't see session attach — that's the agent's own registry). Used as in Workflow 1.
 - **`./uninstall.sh`** — unregisters the engines (menu: keep the home, or complete wipe; `--kb` to unregister the KB); never deletes the user's Ghidra, APKs, target workspaces/notes, or KB vault.
 
@@ -21,7 +21,7 @@ The `install` / `uninstall` / `wiki add|remove` / `download-ghidra` actions belo
 | `llm-re-wiki` | **Optional, read-only** knowledge base (machine-wide) | **user scope** | its **own** registrar `~/.llm-re-wiki/.kb/mcp/register.py` — we **delegate**, never duplicate |
 
 ## Rules
-1. **Never install, register, or uninstall without explicit user confirmation** — and never mid-analysis. Provisioning is `install.sh`.
+1. **Provisioning is `install.sh`, never a mid-analysis action.** The agent doesn't install/register/uninstall engines during a session; it points the user at `./install.sh` + a restart. (The low-level ops below run only when the user explicitly asks.)
 2. After installing an engine, run the `test` action to verify the stdio handshake and report the discovered tools.
 3. "Installed" is not "usable" for `ghidra-mcp`: the bridge being present doesn't mean Ghidra is running with the plugin and the target loaded (see `native-analysis`). Report both.
 4. The KB is **optional**: its absence is never a blocker for analysis. Mention it once as an add-on (`./install.sh`), then proceed without it.
@@ -41,7 +41,8 @@ Check a capability's MCP only when a task reaches the branch that needs it (jadx
    Then route — **you do not install mid-session**:
    - **installed but not attached** → the user **restarts** (`/mcp` in Claude Code; `opencode -c`), then continue.
    - **not installed** → the user runs **`./install.sh`** (it prompts for Ghidra and the optional KB; `--ghidra <dir>` / `--kb-path <dir>` skip the prompts), then restarts.
-   - **Ghidra present but `decompiler_present: false`** → that install can't decompile here; the user repairs it, or re-runs `./install.sh` and chooses **download**. Do **not** hand-roll a headless/`analyzeHeadless` workaround.
+   - **Ghidra present but `decompiler_present: false`** → that install can't decompile here; the user builds its natives (`manage_mcp.py build-ghidra-natives`) or, on macOS, switches to `brew install ghidra` — re-running `./install.sh` offers both. A fresh download doesn't help on macOS (no macOS decompiler in the official zip). Do **not** hand-roll a headless/`analyzeHeadless` workaround.
+   - **`plugin.present: false`** → the GhidraMCP extension isn't installed; the user installs it in Ghidra (File > Install Extensions), enables it, and starts Ghidra.
    - **KB registered but `mcp_importable: false`** → its server can't start (old Python); the user re-runs `./install.sh`. Proceed without the KB meanwhile — it's optional.
 
 > **This is a gate, not a warning (AGENTS.md preflight).** If an *engine* the task needs is missing/not attached, stop and report the blocker + fix first — don't silently start the parts that happen to work. A reduced CLI-only pass is offered as a user choice, never the default. A missing KB never gates anything.
@@ -56,7 +57,9 @@ Check a capability's MCP only when a task reaches the branch that needs it (jadx
 - **Ghidra + `ghidra-mcp` bridge:**
   ```bash
   python3 .claude/skills/mcp-lifecycle/manage_mcp.py set-ghidra </path/to/ghidra>     # existing install (validates its decompiler)
-  python3 .claude/skills/mcp-lifecycle/manage_mcp.py download-ghidra                  # or: fetch the latest official release
+  python3 .claude/skills/mcp-lifecycle/manage_mcp.py download-ghidra                  # or: fetch the official zip (no macOS decompiler)
+  python3 .claude/skills/mcp-lifecycle/manage_mcp.py build-ghidra-natives             # build the decompiler for this platform (JDK 21+, C++ compiler)
+  # macOS alternative: brew install ghidra  →  set-ghidra "$(brew --prefix ghidra)/libexec"
   python3 .claude/skills/mcp-lifecycle/manage_mcp.py install ghidra-mcp --global      # the Python bridge (needs Python 3.10+)
   ```
   The bridge connects to a **running** Ghidra with the ghidra-mcp plugin in `<ghidra>/Ghidra/Extensions/` (`doctor` reports the plugin).

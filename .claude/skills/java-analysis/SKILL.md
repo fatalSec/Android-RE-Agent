@@ -30,7 +30,7 @@ Use the exact tool names below. There is **no** `search_code`, `search_text`, or
 > Searching a **code string literal** (e.g. `"/system/bin/su"` hard-coded in a method) is a `search_classes_by_keyword` `code`-scope search, not `get_strings`. `get_strings` only covers `res/values/strings*.xml`.
 
 ## Triage sequence (do this first)
-Open every new APK with cheap, metadata-only calls before any decompile:
+**Before touching the target**, resolve the opening decision points per the Decision policy (`AGENTS.md`): **`→ prior_workspace_exists`** (a `<name>_analysis/` already exists? reuse / fresh / compare) and **`→ analysis_scope`** (broad request with no stated scope? full / targeted). Then open the APK with cheap, metadata-only calls before any decompile:
 1. `load_apk`, then `status` to confirm it loaded.
 2. `get_app_info` — package, versionName, min/targetSdk, and **permissions** (flag dangerous/custom ones; low `minSdkVersion` is itself a red flag — see quick-wins).
 3. `get_android_manifest` (slice with `section=`) — exported components, custom schemes, `networkSecurityConfig`, `debuggable`.

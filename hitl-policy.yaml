@@ -1,0 +1,126 @@
+# ============================================================================
+# Human-in-the-loop (HITL) decision policy — Android RE Agent
+#
+# The ONE place that decides, for each critical decision the agent reaches,
+# whether it stops to ask you or proceeds and announces what it chose.
+# It operates at the level of the agent's DECISIONS, not individual tool calls.
+#
+# The agent reads this at session start and consults it whenever it reaches a
+# decision below (the skills mark those moments with "→ Decision point: <id>").
+# Everything not listed here stays momentum-driven — no prompting for routine steps.
+#
+# handling:
+#   ask    = stop, show the options with a one-line recommendation, and wait.
+#   auto   = decide using `default`, then state in one line what was chosen and
+#            why, so you can redirect.
+# Edit a decision's `handling`/`default` to tune it. `mode` below is a quick
+# preset; a decision's explicit `handling` always wins over the mode.
+#
+# You can also override in plain words for one session, e.g.
+#   "fresh analysis, don't ask about reuse"   or   "autonomous mode".
+# Session overrides never relax a `locked: true` decision.
+# ============================================================================
+
+version: 1
+
+# cautious  = ask at every non-auto decision below
+# balanced  = use each decision's own handling (the defaults shipped here)
+# autonomous= auto-resolve everything EXCEPT locked decisions (which always ask)
+mode: balanced
+
+decisions:
+
+  # ---- Workspace & scope ---------------------------------------------------
+  prior_workspace_exists:
+    handling: ask
+    default: reuse
+    locked: false
+    summary: A target workspace / notes.md already exists for this APK.
+    options:
+      - reuse    # continue from the existing notes.md and artifacts
+      - fresh    # start clean; archive the old folder to <name>_analysis.<date> (never delete)
+      - compare  # read the old notes but run a new pass alongside
+    recommend_fresh_if: "APK SHA-256 differs from the one recorded in notes.md"
+
+  analysis_scope:
+    handling: ask
+    default: full
+    locked: false
+    summary: A broad request ("analyze this APK") with no stated scope.
+    options:
+      - full      # triage + quick-wins + RASP + anti-analysis + native
+      - targeted  # only the areas the user names
+
+  investigation_fork:
+    handling: ask
+    default: recommended
+    locked: false
+    summary: Two or more substantive, divergent directions of comparable value
+             (e.g. chase the native .so vs the Java decryptor vs the packer first).
+    note: Only when paths genuinely diverge and cost real work; never for an
+          obvious next step or when one path clearly dominates. (Former Rule 7.)
+
+  # ---- Cost -----------------------------------------------------------------
+  expensive_step:
+    handling: auto
+    default: proceed
+    locked: false
+    summary: A long/costly step — native build, Unicorn emulation run, code-scope
+             search of a large APK, importing a large .so into Ghidra.
+    note: Proceed, but announce the step and a rough cost first.
+
+  # ---- Tooling installs (consent) ------------------------------------------
+  optional_tool_install:
+    handling: ask
+    default: ask
+    locked: false
+    summary: An optional CLI helper is needed but absent — APKiD (pip install apkid),
+             Unicorn / z3 (pip install), Ghidra native build, Homebrew Ghidra.
+    options:
+      - install   # with the user's yes
+      - path      # user points at an existing install
+      - skip      # proceed without it, note what that blocks
+
+  # ---- Target modification (locked: always ask) ----------------------------
+  modify_target:
+    handling: ask
+    default: ask
+    locked: true
+    summary: Any change to the app — patch smali, NOP/neutralize a check, edit
+             resources/manifest, rebuild. Always confirm what and why first.
+
+  signing_identity:
+    handling: ask
+    default: debug
+    locked: true
+    summary: Resigning a rebuilt APK — debug keystore vs the user's release keystore.
+    options: [debug, release]
+
+  # ---- Safety-critical (locked) --------------------------------------------
+  authorization_unclear:
+    handling: ask
+    default: ask
+    locked: true
+    summary: Authorization to analyze/modify this APK is unclear, or the request
+             is to bypass protections / defeat a license or integrity check.
+
+  dynamic_execution:
+    handling: ask
+    default: ask
+    locked: true
+    summary: Running the app or instrumenting a real device/emulator — install &
+             launch, Frida attach/dump, any on-device step.
+
+  network_egress:
+    handling: ask
+    default: ask
+    locked: true
+    summary: Sending target data off the machine or fetching from the network —
+             online scanners, uploads, external lookups (KB/jadx/Ghidra are local).
+
+  destructive_fs:
+    handling: ask
+    default: ask
+    locked: true
+    summary: Deleting or overwriting existing files — a workspace, notes, or any
+             user file. Prefer archiving; never delete to "start fresh".

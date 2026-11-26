@@ -17,7 +17,7 @@ Or from a local checkout:
 ./install.sh --kb-path /path/to/llm-re-wiki   # register an existing llm-re-wiki checkout
 ./install.sh --dir /custom/home -y            # choose the home, non-interactive
 ```
-`install.sh` puts the toolkit in `~/.android-re-agent` and registers the MCP **engines at user scope** (so they attach in any project). For Ghidra it asks whether you have an **existing install** (path) or want it to **download** the latest official release. It also **offers** the optional `llm-re-wiki` KB. It's idempotent and generic (detects OS/arch, no sudo); JDK and Android SDK are checked and instructed, not auto-installed.
+`install.sh` puts the toolkit in `~/.android-re-agent` and registers the MCP **engines at user scope** (so they attach in any project). For Ghidra it offers **`brew install ghidra`** on macOS (recommended — it builds the native decompiler), an **existing install** (path), or a **download** of the official zip, then checks that the decompiler exists for your platform. The official zip has no macOS decompiler, so on a Mac without Homebrew it offers to build the natives (JDK 21+ and a C++ compiler) or to continue without decompiling. The final summary reports the decompiler and GhidraMCP-plugin status. It also **offers** the optional `llm-re-wiki` KB. It's idempotent and generic (detects OS/arch, no sudo); JDK and Android SDK are checked and instructed, not auto-installed.
 
 **Restart your agent after installing** (so the MCPs attach), then run the agent by opening your CLI inside the home — like LLM-RE-WIKI, there's no global `/agent` entry:
 ```bash
@@ -65,7 +65,10 @@ Everything the agent produces for an APK goes **next to that APK**, never into t
 ├── ghidra/      Ghidra project (if native analysis is done)
 └── out/         rebuilt/signed APKs
 ```
-`notes.md` records resolved names, findings with exact locations and offsets, decoded strings, and signing decisions, so precise facts survive context summarization and later sessions. Secrets such as release keystore passwords are never written to it.
+`notes.md` records resolved names, findings with exact locations and offsets, decoded strings, signing decisions, and a **Decisions** log, so precise facts and your choices survive context summarization and later sessions. Secrets such as release keystore passwords are never written to it.
+
+## Human-in-the-loop policy
+Critical decisions — not individual tool calls — are governed by **`hitl-policy.yaml`** in the agent home: the single place that decides, per decision, whether the agent **asks** you or **auto**-resolves and announces its choice. It covers things like *a prior analysis folder exists* (reuse / fresh / compare), *scope of a broad request*, *divergent investigation paths*, *installing an optional tool*, and *modifying or resigning the target*. Edit the file to change a default, or set an override in plain words for one session (e.g. "fresh analysis, don't ask about reuse", "autonomous mode"). Safety-critical decisions are **locked** (modifying the target, signing, unclear authorization / bypassing protections, running on a device, network egress, deleting files) — they always ask, whatever the mode. Every decision taken is written to the target's **Decisions** log so later sessions resume with the same choices. A re-install keeps your edited policy and drops new defaults in `hitl-policy.yaml.default`.
 
 ## Typical workflow
 1. Load the APK into jadx-headless (`load_apk`) and triage the manifest + entry points (`java-analysis`).
@@ -82,7 +85,7 @@ The KB is a cross-check, not an oracle: the agent keeps its provenance markers (
 | **Python 3.10+** | ghidra-mcp bridge, KB server | `brew install python@3.12` |
 | **apktool** | unpack / rebuild resources & smali | `brew install apktool` |
 | **Android SDK build-tools** (`zipalign`, `apksigner`) | align & sign APKs | Android Studio SDK Manager, or `brew install --cask android-commandlinetools` |
-| **Ghidra** + ghidra-mcp plugin | native `.so` analysis | `install.sh` (existing path or download); plugin goes in `<ghidra>/Ghidra/Extensions/` |
+| **Ghidra** + GhidraMCP plugin | native `.so` analysis | `install.sh` (`brew install ghidra` on macOS, existing path, or download + native build); install the plugin via Ghidra's File > Install Extensions |
 | **APKiD** (optional) | packer/obfuscator fingerprinting | `pip install apkid` (the agent asks before using it) |
 
 The toolchain check looks for `zipalign`/`apksigner` on `PATH`, Homebrew, and standard Android SDK locations (`$ANDROID_HOME`, `$ANDROID_SDK_ROOT`, `~/Library/Android/sdk`):

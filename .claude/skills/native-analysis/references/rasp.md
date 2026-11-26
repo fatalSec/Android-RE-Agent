@@ -4,7 +4,7 @@ Loaded on demand from `native-analysis`. Assumes the SKILL.md triage, the Ghidra
 
 **Scope:** native (`.so`)-layer RASP. Java/Smali-layer RASP (manifest flags, `RootBeer`, Java signature checks, Play Integrity/SafetyNet) lives in the **`java-analysis`** skill's `references/rasp.md`; check both layers — hardened apps split checks across them, and native checks are the ones that survive Java-layer patching.
 
-**For authorized testing only** (AGENTS.md). Report *where* each check lives and *how* it works; neutralizing-for-testing notes stay factual (which function/offset or branch), not a cracking recipe.
+**Authorized testing only** (`authorization_unclear` is a locked decision — confirm per the Decision policy if in doubt). This skill *locates and explains* checks; actually **neutralizing** one (patch/NOP) is **`→ Decision point: modify_target`** (locked). Reporting stays factual (which function/offset or branch), not a cracking recipe.
 
 **Two cross-cutting facts:**
 - Native RASP routinely uses **direct `SVC`** (not libc) to dodge Frida hooks on `openat`/`ptrace` → resolve those via `references/anti-analysis.md` §2.

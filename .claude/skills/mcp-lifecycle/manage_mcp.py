@@ -323,9 +323,11 @@ def install_ghidra() -> bool:
 
 
 def download_ghidra(dest_dir: str | None = None) -> str | None:
-    """Download + extract the latest official Ghidra public release (a universal build
-    that includes this platform's decompiler), then record it via set-ghidra. Non-fatal:
-    returns the install dir, or None on failure."""
+    """Download + extract the latest official Ghidra public release, then record it via
+    set-ghidra. NOTE: the official zip ships prebuilt natives only for some platforms
+    (e.g. Linux/Windows x86_64) — on macOS the decompiler is missing and must be built
+    (build-ghidra-natives) or Ghidra installed via Homebrew. Non-fatal: returns the
+    install dir, or None on failure."""
     import zipfile
 
     api = "https://api.github.com/repos/NationalSecurityAgency/ghidra/releases/latest"
@@ -381,6 +383,9 @@ def download_ghidra(dest_dir: str | None = None) -> str | None:
     save_ghidra_dir(str(ghidra_dir))
     st = ghidra_decompiler_status(str(ghidra_dir))
     log(f"Ghidra installed at {ghidra_dir}  (decompiler_present={st.get('decompiler_present')}).")
+    if not st.get("decompiler_present"):
+        log(f"[!] The official zip has no prebuilt decompiler for {st.get('platform')}. Build it "
+            f"(`manage_mcp.py build-ghidra-natives`) or, on macOS, use `brew install ghidra`.")
     log("Note: running Ghidra needs a JDK 21+. The ghidra-mcp plugin must still be installed into "
         "<ghidra>/Ghidra/Extensions and enabled in the CodeBrowser (doctor reports it).")
     return str(ghidra_dir)
@@ -718,20 +723,98 @@ def _registered(server_name: str) -> dict:
 
 
 def ghidra_plugin_status(ghidra_dir: str | None) -> dict:
-    """Is a ghidra-mcp plugin/extension installed in <ghidra>/Ghidra/Extensions/Ghidra?"""
+    """Is a ghidra-mcp plugin/extension installed? Looks in the install dir
+    (<ghidra>/Ghidra/Extensions/Ghidra) and in Ghidra's per-user settings dirs, where
+    File > Install Extensions puts it (macOS ~/Library/ghidra/<ver>/Extensions,
+    Linux ~/.config/ghidra/<ver>/Extensions, older ~/.ghidra/.<ver>/Extensions)."""
     if not ghidra_dir:
         return {"present": False, "note": "No Ghidra path set."}
-    ext = Path(ghidra_dir).expanduser() / "Ghidra" / "Extensions" / "Ghidra"
-    if not ext.is_dir():
-        return {"extensions_dir": str(ext), "present": False,
-                "note": "No Extensions/Ghidra dir — install the ghidra-mcp extension and enable it in the CodeBrowser."}
-    hits = [p.name for p in ext.iterdir() if p.is_dir() and ("mcp" in p.name.lower() or "ghidramcp" in p.name.lower().replace("-", ""))]
+    home = Path.home()
+    dirs = [Path(ghidra_dir).expanduser() / "Ghidra" / "Extensions" / "Ghidra"]
+    for pattern in ("Library/ghidra/*/Extensions", ".config/ghidra/*/Extensions", ".ghidra/.ghidra_*/Extensions"):
+        dirs += sorted(home.glob(pattern))
+    searched, hits = [], []
+    for ext in dirs:
+        if not ext.is_dir():
+            continue
+        searched.append(str(ext))
+        hits += [str(p) for p in ext.iterdir() if p.is_dir() and "mcp" in p.name.lower()]
     return {
-        "extensions_dir": str(ext),
+        "searched": searched or [str(dirs[0])],
         "present": bool(hits),
         "matches": hits,
-        "note": None if hits else "No ghidra-mcp extension found in Extensions/Ghidra; install it and enable it in the CodeBrowser (Ghidra must be running with the plugin for the bridge to connect).",
+        "note": None if hits else (
+            "No ghidra-mcp extension found. Install it in Ghidra (File > Install Extensions) and enable it "
+            "in the CodeBrowser — the bridge needs a running Ghidra with this plugin to connect."),
     }
+
+
+def _find_jdk(min_major: int = 21) -> str | None:
+    """A JAVA_HOME for a JDK >= min_major (prefers exactly 21, the version Ghidra targets)."""
+    import re
+    cands: list[str] = []
+    if sys.platform == "darwin" and Path("/usr/libexec/java_home").exists():
+        for spec in (str(min_major), f"{min_major}+"):
+            out = subprocess.run(["/usr/libexec/java_home", "-v", spec], capture_output=True, text=True).stdout.strip()
+            if out:
+                cands.append(out)
+    if os.environ.get("JAVA_HOME"):
+        cands.append(os.environ["JAVA_HOME"])
+    java = shutil.which("java")
+    if java:
+        props = subprocess.run([java, "-XshowSettings:properties", "-version"], capture_output=True, text=True).stderr
+        m = re.search(r"java\.home = (.+)", props)
+        if m:
+            cands.append(m.group(1).strip())
+    for home in cands:
+        jbin = Path(home) / "bin" / "java"
+        if not jbin.exists():
+            continue
+        ver = subprocess.run([str(jbin), "-version"], capture_output=True, text=True).stderr
+        m = re.search(r'version "(\d+)', ver)
+        if m and int(m.group(1)) >= min_major:
+            return home
+    return None
+
+
+def build_ghidra_natives(ghidra_dir: str | None = None) -> bool:
+    """Build Ghidra's native components (decompiler etc.) for this platform with the
+    bundled Gradle wrapper: `<ghidra>/support/gradle/gradlew buildNatives`. Needs a
+    JDK 21+ and a C/C++ toolchain. Non-fatal: returns True only if the decompiler is
+    present afterwards."""
+    gdir = ghidra_dir or get_ghidra_dir()
+    if not gdir or not Path(gdir).expanduser().is_dir():
+        log("[!] No Ghidra install dir (pass a path or run set-ghidra first).")
+        return False
+    gdir = str(Path(gdir).expanduser())
+    if ghidra_decompiler_status(gdir).get("decompiler_present"):
+        log("Decompiler already present for this platform — nothing to build.")
+        return True
+    gradlew = Path(gdir) / "support" / "gradle" / "gradlew"
+    if not gradlew.exists():
+        log(f"[!] {gradlew} not found — this Ghidra copy can't build its natives.")
+        return False
+    jdk = _find_jdk(21)
+    if not jdk:
+        log("[!] Building Ghidra natives needs a JDK 21+ (e.g. `brew install openjdk@21`).")
+        return False
+    if sys.platform == "darwin":
+        if subprocess.run(["xcrun", "--find", "clang++"], capture_output=True).returncode != 0:
+            log("[!] No C++ compiler — install the Xcode Command Line Tools: `xcode-select --install`.")
+            return False
+    elif not any(shutil.which(c) for c in ("c++", "g++", "clang++")):
+        log("[!] No C++ compiler found (install build-essential / gcc-c++ / clang).")
+        return False
+    log(f"Building Ghidra natives with JAVA_HOME={jdk} (Gradle is downloaded on first run; this takes several minutes) ...")
+    env = os.environ.copy()
+    env["JAVA_HOME"] = jdk
+    r = subprocess.run([str(gradlew), "buildNatives"], cwd=str(gradlew.parent), env=env)
+    st = ghidra_decompiler_status(gdir)
+    if r.returncode == 0 and st.get("decompiler_present"):
+        log(f"Native build OK — decompiler present for {st.get('platform')}.")
+        return True
+    log(f"[!] Native build did not produce the decompiler (gradle exit {r.returncode}). {st.get('note') or ''}")
+    return False
 
 
 def _wiki_venv_health(venv_py: Path) -> dict:
@@ -867,6 +950,10 @@ def main() -> None:
     p_gh = sub.add_parser("set-ghidra", help="Record the user's Ghidra install path and check its decompiler")
     p_gh.add_argument("path", help="Path to the Ghidra install directory")
 
+    # build-ghidra-natives (build the decompiler etc. for this platform via the bundled gradlew)
+    p_bn = sub.add_parser("build-ghidra-natives", help="Build Ghidra's native decompiler for this platform (needs JDK 21+ and a C++ compiler)")
+    p_bn.add_argument("path", nargs="?", default=None, help="Ghidra install dir (default: the recorded one)")
+
     # download-ghidra (fetch + extract the latest official Ghidra, then set-ghidra)
     p_dg = sub.add_parser("download-ghidra", help="Download + extract the latest official Ghidra public release")
     p_dg.add_argument("--dir", dest="dir", default=None, help="Where to install it (default: <home>/ghidra)")
@@ -900,9 +987,15 @@ def main() -> None:
     elif args.action == "doctor":
         doctor()
     elif args.action == "set-ghidra":
+        # Exit codes let install.sh act on the result: 0 = decompiler present,
+        # 3 = install found but no decompiler for this platform, 1 = path doesn't exist.
         status = ghidra_decompiler_status(args.path)
-        save_ghidra_dir(str(Path(args.path).expanduser()))
+        if status.get("exists"):
+            save_ghidra_dir(str(Path(args.path).expanduser()))
         print(json.dumps(status, indent=2))
+        sys.exit(0 if status.get("decompiler_present") else (3 if status.get("exists") else 1))
+    elif args.action == "build-ghidra-natives":
+        sys.exit(0 if build_ghidra_natives(args.path) else 1)
     elif args.action == "download-ghidra":
         sys.exit(0 if download_ghidra(args.dir) else 1)
 

@@ -8,9 +8,11 @@ description: Unpack APKs to smali/resources with apktool, and rebuild, page-alig
 ## Rules
 1. **Verify the toolchain first:** run the `check` action before repacking.
 2. **Resigning goes through the script only — no hand-run commands.** The v2/v3 pipeline order is strict and error-prone (`apktool b` → `zipalign` *before* signing → `apksigner sign` → `apksigner verify`), and the tools live in the SDK `build-tools/<ver>/` dir (not on `PATH`). `apk_tools.py repack` encodes that order, finds the tools, and gates on `apksigner verify`. Do **not** substitute a raw `zipalign`/`apksigner` sequence, and never use `jarsigner` (v1-only — apps targeting API 30+ require a v2 signature to install).
-3. **Ask which certificate before signing.** Every resign, ask the user: **debug** or **release**? In both cases the agent runs `repack`.
+3. **Signing certificate (`→ Decision point: signing_identity`).** Resolve **debug** vs **release** per the Decision policy (it's a locked decision — it always asks). In both cases the agent runs `repack`; this skill just explains the options:
    - **Debug** — auto-generated debug keystore (`CN=Android Debug`, password `android`). No secret involved.
-   - **Release** — the user's own keystore. Ask the user for the keystore **path**, key **alias**, and a **path to a file containing the password** (one-time: `printf %s 'PASSWORD' > key.pw`). Run `repack` with `--ks-pass-file`; `apksigner` reads the file itself. **Never ask for, accept, echo, log, or store the password value** — do not have the user paste it into chat (the transcript can't be scrubbed), do not put it on the command line, do not write it to memory or the report. The agent never sees the secret, so there is nothing to remember. After a successful sign, tell the user they can delete the password file.
+   - **Release** — the user's own keystore: the keystore **path**, key **alias**, and a **path to a file containing the password** (one-time: `printf %s 'PASSWORD' > key.pw`). Run `repack` with `--ks-pass-file`; `apksigner` reads the file itself. **Hard rule (not a policy choice): never accept, echo, log, or store the password value** — no pasting it into chat (the transcript can't be scrubbed), no command line, no notes. The agent never sees the secret. After a successful sign, tell the user they can delete the password file.
+
+> **Modifying the target** (patching smali, neutralizing a check, editing resources) before a rebuild is **`→ Decision point: modify_target`** (locked — confirm what and why first).
 
 ## Agent Commands
 

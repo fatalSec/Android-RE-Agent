@@ -116,9 +116,16 @@ if [ "$TARGET_DIR" = "$SRC" ]; then
     ok "Using the current checkout in place."
 elif [ "$IS_CHECKOUT" -eq 1 ]; then
     mkdir -p "$TARGET_DIR"
-    for item in .claude templates AGENTS.md CLAUDE.md README.md install.sh update.sh uninstall.sh .git; do
+    SAVED_POLICY=0
+    [ -f "$TARGET_DIR/hitl-policy.yaml" ] && { cp "$TARGET_DIR/hitl-policy.yaml" "$TARGET_DIR/hitl-policy.yaml.keep" 2>/dev/null; SAVED_POLICY=1; }
+    for item in .claude templates AGENTS.md CLAUDE.md README.md hitl-policy.yaml install.sh update.sh uninstall.sh .git; do
         [ -e "$SRC/$item" ] && cp -R "$SRC/$item" "$TARGET_DIR/" 2>/dev/null || true
     done
+    if [ "$SAVED_POLICY" -eq 1 ]; then
+        mv "$TARGET_DIR/hitl-policy.yaml" "$TARGET_DIR/hitl-policy.yaml.default" 2>/dev/null
+        mv "$TARGET_DIR/hitl-policy.yaml.keep" "$TARGET_DIR/hitl-policy.yaml" 2>/dev/null
+        info "Kept your edited hitl-policy.yaml; new defaults are in hitl-policy.yaml.default"
+    fi
     ok "Copied toolkit from $SRC"
 elif [ -d "$TARGET_DIR/.git" ]; then
     git -C "$TARGET_DIR" pull --ff-only && ok "Updated existing clone." || warn "Could not fast-forward existing clone."
@@ -135,20 +142,82 @@ step "Installing jadx-headless MCP (user scope)"
 "$PY" "$MGR" install jadx-headless --global || warn "jadx-headless install reported an error."
 
 step "Ghidra (native engine)"
-GHIDRA_READY=0
+GHIDRA_READY=0; GHIDRA_PATH=""; GHIDRA_INTERACTIVE=0
+IS_MAC=0; [ "$(uname -s)" = "Darwin" ] && IS_MAC=1
+HAS_BREW=0; command -v brew >/dev/null 2>&1 && HAS_BREW=1
+
+ghidra_brew() {  # macOS: Homebrew's `ghidra` formula builds the decompiler for this Mac
+    info "Installing Ghidra with Homebrew (builds its native decompiler; this can take a while)..."
+    if brew install ghidra; then GHIDRA_PATH="$(brew --prefix ghidra)/libexec"; ok "Ghidra (Homebrew): $GHIDRA_PATH"; return 0; fi
+    warn "brew install ghidra failed."; return 1
+}
+ghidra_check() {  # path -> 0 decompiler present, 3 no decompiler for this platform, 1 path missing
+    local rc=0
+    "$PY" "$MGR" set-ghidra "$1" >/dev/null || rc=$?
+    return $rc
+}
+ghidra_fix_cmds() {  # print the fixes instead of prompting
+    info "Fix — build the natives:  cd \"$1/support/gradle\" && ./gradlew buildNatives   (JDK 21+ and a C++ compiler; several minutes)"
+    info "                 or run:  $PY $MGR build-ghidra-natives \"$1\""
+    [ "$IS_MAC" -eq 1 ] && info "     or on macOS use:  brew install ghidra  &&  $TARGET_DIR/install.sh --ghidra \"\$(brew --prefix ghidra)/libexec\""
+}
+ghidra_no_decompiler() {  # path — offer build / brew / continue (interactive) or print fixes
+    local g="$1"
+    warn "This Ghidra has no native decompiler for this platform — native .so analysis won't work until it does."
+    if [ "$GHIDRA_INTERACTIVE" -eq 0 ]; then ghidra_fix_cmds "$g"; return; fi
+    local brew_opt="" def="b"
+    [ "$IS_MAC" -eq 1 ] && [ "$HAS_BREW" -eq 1 ] && brew_opt=", [h]omebrew install ghidra instead"
+    case "$(prompt_user "  [b]uild the natives now (JDK 21+ and a C++ compiler, several minutes)${brew_opt}, or [c]ontinue without decompiling? [default $def]: " "$def")" in
+        h|H) if [ -n "$brew_opt" ] && ghidra_brew; then
+                 if ghidra_check "$GHIDRA_PATH"; then ok "Decompiler present."; else warn "Homebrew Ghidra still has no decompiler for this platform."; ghidra_fix_cmds "$GHIDRA_PATH"; fi
+             else ghidra_fix_cmds "$g"; fi ;;
+        c|C) warn "Continuing without a decompiler — native .so analysis will be blocked until it's fixed:"; ghidra_fix_cmds "$g" ;;
+        *)   if "$PY" "$MGR" build-ghidra-natives "$g"; then ok "Decompiler built."
+             else warn "Native build failed — continuing without a decompiler."; ghidra_fix_cmds "$g"; fi ;;
+    esac
+}
+
 if [ -n "$ARG_GHIDRA" ]; then
-    "$PY" "$MGR" set-ghidra "$ARG_GHIDRA" || true; GHIDRA_READY=1
+    GHIDRA_PATH="$ARG_GHIDRA"                      # explicit path: check, print fixes, never prompt
 elif [ "$ARG_YES" -eq 0 ]; then
-    case "$(prompt_user "Ghidra — [p]ath to an existing install, [d]ownload the latest now (~400MB, needs JDK 21+ to run), or [s]kip? [p/d/s, default p]: " "p")" in
-        d|D|download|DOWNLOAD)
-            if "$PY" "$MGR" download-ghidra --dir "$TARGET_DIR/ghidra"; then GHIDRA_READY=1
-            else warn "Ghidra download failed — set a path later: $TARGET_DIR/install.sh --ghidra <dir>"; fi ;;
-        s|S|skip|SKIP) info "Skipped native/Ghidra." ;;
-        *) p="$(prompt_user "Path to your Ghidra install dir: " "")"
-           if [ -n "$p" ]; then "$PY" "$MGR" set-ghidra "$p" || true; GHIDRA_READY=1; else info "No path given — skipped native/Ghidra."; fi ;;
+    GHIDRA_INTERACTIVE=1
+    if [ "$IS_MAC" -eq 1 ] && [ "$HAS_BREW" -eq 1 ]; then
+        PROMPT="Ghidra — [b]rew install ghidra (recommended: includes the built decompiler), [p]ath to an existing install, [d]ownload the official zip, or [s]kip? [b/p/d/s, default b]: "; DEF="b"
+    else
+        PROMPT="Ghidra — [p]ath to an existing install, [d]ownload the official zip (~400MB, needs JDK 21+ to run), or [s]kip? [p/d/s, default p]: "; DEF="p"
+    fi
+    case "$(prompt_user "$PROMPT" "$DEF")" in
+        b|B|brew) if [ "$HAS_BREW" -eq 1 ]; then ghidra_brew || true; else warn "Homebrew not found."; fi ;;
+        d|D|download)
+            if [ "$IS_MAC" -eq 1 ]; then
+                warn "The official Ghidra zip has no prebuilt macOS decompiler — you'd have to build it after the ~400MB download."
+                if [ "$HAS_BREW" -eq 1 ]; then
+                    case "$(prompt_user "  Use 'brew install ghidra' instead (includes the decompiler)? [Y/n]: " "Y")" in
+                        n|N|no|NO) : ;;
+                        *) ghidra_brew || true ;;
+                    esac
+                fi
+            fi
+            if [ -z "$GHIDRA_PATH" ]; then
+                if "$PY" "$MGR" download-ghidra --dir "$TARGET_DIR/ghidra"; then
+                    GHIDRA_PATH="$(sed -n 's/^GHIDRA_INSTALL_DIR=//p' "$TARGET_DIR/.mcp-tools/ghidra.conf" 2>/dev/null)"
+                else warn "Ghidra download failed — set a path later: $TARGET_DIR/install.sh --ghidra <dir>"; fi
+            fi ;;
+        s|S|skip) info "Skipped native/Ghidra." ;;
+        *) GHIDRA_PATH="$(prompt_user "Path to your Ghidra install dir: " "")"
+           [ -n "$GHIDRA_PATH" ] || info "No path given — skipped native/Ghidra." ;;
     esac
 else
     info "Skipped native/Ghidra (non-interactive). Later: $TARGET_DIR/install.sh --ghidra <dir>"
+fi
+
+if [ -n "$GHIDRA_PATH" ]; then
+    rc=0; ghidra_check "$GHIDRA_PATH" || rc=$?
+    case "$rc" in
+        0) ok "Ghidra decompiler present for this platform ($GHIDRA_PATH)."; GHIDRA_READY=1 ;;
+        3) ghidra_no_decompiler "$GHIDRA_PATH"; GHIDRA_READY=1 ;;
+        *) warn "Ghidra path not found: $GHIDRA_PATH — skipped native setup."; info "Later: $TARGET_DIR/install.sh --ghidra <dir>" ;;
+    esac
 fi
 if [ "$GHIDRA_READY" -eq 1 ]; then
     "$PY" "$MGR" install ghidra-mcp --global || warn "ghidra-mcp bridge install reported an error."
@@ -204,7 +273,33 @@ fi
 
 # Step 6: Self-check ----------------------------------------------------------
 step "Self-check (doctor)"
-"$PY" "$MGR" doctor || true
+DOCTOR_JSON="$("$PY" "$MGR" doctor 2>/dev/null)" || true
+printf '%s' "$DOCTOR_JSON" | "$PY" -c '
+import json, sys
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    print("  [!] doctor output unreadable — run: python3 .claude/skills/mcp-lifecycle/manage_mcp.py doctor"); sys.exit(0)
+def line(ok, msg): print(("  [✓] " if ok else "  [!] ") + msg)
+t = d.get("toolchain", {})
+missing = [k for k, v in t.get("tools", {}).items() if not v]
+line(t.get("all_present"), "APK toolchain" + ("" if not missing else " — missing: " + ", ".join(missing)))
+j = d.get("jadx_headless", {})
+line(j.get("installed") and (j.get("opencode_global") or j.get("claude_user")), "jadx-headless MCP registered")
+g = d.get("ghidra_mcp", {}); gd = g.get("ghidra", {}); pl = g.get("plugin", {})
+if gd.get("ghidra_dir"):
+    line(gd.get("decompiler_present"), "Ghidra decompiler (%s): %s" % (gd.get("platform"), "present" if gd.get("decompiler_present") else "MISSING — native .so analysis blocked"))
+    line(g.get("bridge_installed"), "ghidra-mcp bridge installed")
+    line(pl.get("present"), "GhidraMCP plugin: " + ("installed" if pl.get("present") else "NOT found — install it in Ghidra (File > Install Extensions) and enable it"))
+else:
+    print("  [-] Ghidra: not configured (optional — needed only for native .so analysis)")
+k = d.get("llm_re_wiki", {})
+if k.get("installed") and (k.get("claude") or k.get("opencode")):
+    line(k.get("mcp_importable"), "llm-re-wiki KB server: " + ("can start" if k.get("mcp_importable") else "CANNOT start (old Python) — re-run install.sh"))
+else:
+    print("  [-] llm-re-wiki KB: not registered (optional)")
+'
+info "Full details: python3 .claude/skills/mcp-lifecycle/manage_mcp.py doctor"
 
 # Step 7: Done ----------------------------------------------------------------
 printf "\n%b%b========================================================================%b\n" "$GREEN" "$BOLD" "$RESET"

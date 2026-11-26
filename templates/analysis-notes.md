@@ -17,6 +17,12 @@ Provenance markers: [V: src] secondary · [I] inferred · [U] unverified · [VS:
 - Protector / packer: <name or "none identified"> [provenance]
 - Analysis started: <YYYY-MM-DD> · last updated: <YYYY-MM-DD>
 
+## Decisions
+<!-- Every HITL decision point reached (asked or auto-resolved), so later sessions resume
+     with the same choices instead of re-deciding. See AGENTS.md -> Decision policy. -->
+- <YYYY-MM-DD> `analysis_scope` → <full|targeted: areas> (<asked|auto>)
+- <YYYY-MM-DD> `prior_workspace_exists` → <reuse|fresh|compare> (<asked|auto>)
+
 ## Resolved map (obfuscated → meaning)
 <!-- de-obfuscated names so you don't re-resolve them; exact FQNs -->
 - `a.b.c` → string decryptor, `a.b.c.d(int): String`

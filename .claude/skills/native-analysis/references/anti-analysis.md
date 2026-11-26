@@ -2,12 +2,12 @@
 
 Loaded on demand from `native-analysis`. Assumes the SKILL.md triage, the Ghidra-bridge prerequisite, and KB-grounding rules. Ghidra (`ghidra-mcp`) gives disassembly / decompilation / xrefs; the **resolution** steps below need tools Ghidra does not provide. The `llm-re-wiki` KB is **optional** — when its `kb_*` tools aren't registered, skip every KB step here and rely on direct analysis. Write any files only into the target workspace beside the APK (`<apk-dir>/<apk-name>_analysis/`, see `AGENTS.md`), never into the agent home.
 
-**External tooling (not `ghidra-mcp`) — install with consent.** Emulation and MBA/SMT solving run via Bash on bytes/addresses/registers you extract from Ghidra:
+**External tooling (not `ghidra-mcp`) — `→ Decision point: optional_tool_install`.** Emulation and MBA/SMT solving run via Bash on bytes/addresses/registers you extract from Ghidra:
 - **Unicorn Engine** (`pip install unicorn`) — concrete CPU emulation of a block/function (opaque predicates, CFF, indirect branches, string decryptors).
 - **z3** (`pip install z3-solver`) — SMT: prove equivalence / simplify MBA.
 - **SiMBA** (`DenuvoSoftwareSolutions/SiMBA`, from source) — fast linear-MBA simplifier.
 - **gooMBA / gooMBA++** — MBA simplifier (Hex-Rays/IDA plugin; use if you have IDA — for a Ghidra flow prefer z3/SiMBA).
-Per AGENTS.md Rule 1, ask before `pip install`/building these. If one is unavailable, say what that blocks and fall back to static decompiler reasoning where you can.
+Resolve a missing one via the Decision policy (install / path / skip). A long emulation or build run is also **`→ Decision point: expensive_step`** (announce it). If one is unavailable, say what that blocks and fall back to static decompiler reasoning where you can.
 
 **Emulation method (shared by opaque predicates / CFF / indirect branches / string decryptors).** From Ghidra: the function/block byte range, its load address, and the entry register/memory state. Then: map the bytes in Unicorn at the real address, seed registers/stack, run from the start address, stop at the branch/`ret`/output write, and read the result (branch taken? computed target? decrypted buffer?). Emulate the *smallest* self-contained slice; stub syscalls/`bl` to externals. Honest limit: a block that reads global/heap state needs that state seeded or it won't emulate faithfully — say so rather than trust a bad run.
 
